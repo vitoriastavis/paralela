@@ -29,51 +29,45 @@ typedef unsigned short mtype;
 
 char* read_seq(char *fname)
 {
-	//file pointer
+	
 	FILE *fseq = NULL;
-	//sequence size
 	int size = 0;
-	//sequence pointer
 	char *seq = NULL;
-	//sequence index
-	int i = 0;
 
-	//open file
+	int i = 0;
+	
 	fseq = fopen(fname, "rt");
 	
 	if (fseq == NULL )
 	{
-		printf("Error reading file %s\n", fname);
+		printf("erro ao ler arquivo %s\n", fname);
 		exit(1);
 	}
 
-	//find out sequence size to allocate memory afterwards
+	// encontrar tamanho da sequencia
 	fseek(fseq, 0L, SEEK_END);
 	size = ftell(fseq);
 	rewind(fseq);
 
-	//allocate memory (sequence)
+	// alocar memoria para sequencia
 	seq = (char *) calloc(size + 1, sizeof(char));
 	if (seq == NULL )
 	{
-		printf("Erro allocating memory for sequence %s.\n", fname);
+		printf("erro ao alocar memoria %s.\n", fname);
 		exit(1);
 	}
 
-	//read sequence from file
+	// le a sequencia e adiciona o \0 no final
 	while (!feof(fseq))
 	{
 		seq[i] = fgetc(fseq);
 		if ((seq[i] != '\n') && (seq[i] != EOF))
 			i++;
-	}
-	//insert string terminator
+	}	
 	seq[i] = '\0';
 
-	//close file
 	fclose(fseq);
 
-	//return sequence pointer
 	return seq;
 }
 
@@ -241,7 +235,9 @@ mtype lcs_mpi(int size_a, int size_b, int size_c, mtype** s_matrix, mtype* p_mat
 		int end_id = (rank * chunk_size) + chunk_size;
 		// printf("teste lcs starta nd end \n");
 
-        int t, s;
+        int t = 0;
+		int s = 0;
+
 
         for (int j = start_id; j < end_id; j++)
 		{		
@@ -258,70 +254,187 @@ mtype lcs_mpi(int size_a, int size_b, int size_c, mtype** s_matrix, mtype* p_mat
 		// printf("teste lcs gather \n");
 	}
 
+	printf("reank %d, number %d \n", rank, s_matrix[size_b][size_a]);
 	return s_matrix[size_b][size_a]; 
 }
 
+void calc_P_matrix_v1(short *P, char *b, int len_b, char *c, int len_c, int myrank, int chunk_size)
+{
+   char receive_array_for_scatter_c[chunk_size];
+   short receive_array_for_scatter_p[chunk_size*(len_b+1)];
+   if(myrank==0)
+   {
+	 
+   }
+    //Scatter the char array chunks by sending each process a particular chunk
+    MPI_Scatter(c, chunk_size, MPI_CHAR,&receive_array_for_scatter_c,chunk_size,MPI_CHAR, 0, MPI_COMM_WORLD);
+   //Scatter the char array chunks by sending each process a particular chunk
+    MPI_Scatter(P, chunk_size*(len_b+1), MPI_SHORT,&receive_array_for_scatter_p,chunk_size*(len_b+1),MPI_SHORT, 0, MPI_COMM_WORLD);
+     // Broadcast the whole b  array to everybody
+    MPI_Bcast(b, len_b, MPI_CHAR, 0, MPI_COMM_WORLD);
+  
+    for(int i=0;i<chunk_size;i++)
+    {
+        for(int j=2;j<len_b+1;j++)
+        {
+            if(b[j-2]==receive_array_for_scatter_c[i]) //j-2 as b we assume here that b has a empty character in the beginning
+            {
+                receive_array_for_scatter_p[(i*(len_b+1))+j] = j-1;
+            }
+            else
+            {
+                receive_array_for_scatter_p[(i*(len_b+1))+j] = receive_array_for_scatter_p[(i*(len_b+1))+j-1];
+            }
+        }
+    }
+   
+    //now gather all the calculated values of P matrix in process 0
+    MPI_Gather(receive_array_for_scatter_p, chunk_size*(len_b+1), MPI_SHORT, P, chunk_size*(len_b+1), MPI_SHORT, 0, MPI_COMM_WORLD);
+}
+
+
+mtype lcs_yang_v1(mtype **DP, mtype *P, char *A, char *B, char *C, int m, int n, int u, int myrank, int chunk_size)
+{
+    
+    MPI_Bcast(P, (u*(n+1)), MPI_SHORT, 0, MPI_COMM_WORLD);
+    for(int i=1;i<m+1;i++)
+    {
+	
+	
+	// Broadcast the c_i  array to everybody
+	//MPI_Bcast(A_i, 1, MPI_CHAR, 0, MPI_COMM_WORLD);
+	// Broadcast the  whole B  array to everybody
+	//MPI_Bcast(B, len_b, MPI_CHAR, 0, MPI_COMM_WORLD);
+	
+	//Scatter the char array A chunks by sending each process a particular chunk
+	//MPI_Scatter(A, chunk_size, MPI_CHAR,&scatter_receive_a,chunk_size,MPI_CHAR, 0, MPI_COMM_WORLD);
+	
+	int c_i = get_idx(C, u, A[i - 1]);
+	//printf("c_i is %d for %c from %d\n",c_i,A[i-1],myrank);	
+	short dp_i_receive[chunk_size]; 
+	// Broadcast the  whole B  array to everybody
+	MPI_Scatter(DP[i], chunk_size, MPI_SHORT,&dp_i_receive,chunk_size,MPI_SHORT, 0, MPI_COMM_WORLD);
+	int start_id = (myrank * chunk_size);
+	int end_id = (myrank * chunk_size) + chunk_size;
+	for(int j= start_id ;j<end_id;j++)//if myrank=0 then j=start_id+1 else j=start_id
+	{
+		if(j==start_id && myrank==0)j=j+1;
+		if(A[i-1]==B[j-1])
+		{
+			dp_i_receive[j-start_id] = DP[i-1][j-1] + 1;
+		}
+		else if(P[(c_i*(n+1))+j]==0)
+		{
+			dp_i_receive[j-start_id] = max(DP[i-1][j], 0);
+		}
+		else
+		{
+			dp_i_receive[j-start_id] = max(DP[i-1][j], DP[i-1][P[(c_i*(n+1))+j]-1] + 1);
+		}
+	}
+	//now gather all the calculated values of P matrix in process 0
+	MPI_Allgather(dp_i_receive, chunk_size, MPI_SHORT,DP[i], chunk_size, MPI_SHORT, MPI_COMM_WORLD);
+    }
+    return DP[m][n];
+}
+
+void calc_P_matrix_v2(mtype *P, char *b, int len_b, char *c, int len_c, int myrank, int chunk_size)
+{
+	char receive_array_for_scatter_c[chunk_size];
+   short receive_array_for_scatter_p[chunk_size*(len_b+1)];
+//Scatter the char array chunks by sending each process a particular chunk
+MPI_Scatter(c, chunk_size, MPI_CHAR,&receive_array_for_scatter_c,chunk_size,MPI_CHAR, 0, MPI_COMM_WORLD);
+//Scatter the char array chunks by sending each process a particular chunk
+MPI_Scatter(P, chunk_size*(len_b+1), MPI_SHORT,&receive_array_for_scatter_p,chunk_size*(len_b+1),MPI_SHORT, 0, MPI_COMM_WORLD);
+// Broadcast the whole b  array to everybody
+MPI_Bcast(b, len_b, MPI_CHAR, 0, MPI_COMM_WORLD);
+
+    
+for(int i=0;i<chunk_size;i++)
+    {
+        for(int j=1;j<len_b+1;j++)
+        {
+            if(b[j-1]==receive_array_for_scatter_c[i])
+            {
+		receive_array_for_scatter_p[(i*(len_b+1))+j] = j;
+            }
+            else
+            {
+		receive_array_for_scatter_p[(i*(len_b+1))+j] = receive_array_for_scatter_p[(i*(len_b+1))+j-1];
+            }
+        }
+    }
+//now gather all the calculated values of P matrix in process 0
+MPI_Gather(receive_array_for_scatter_p, chunk_size*(len_b+1), MPI_SHORT, P, chunk_size*(len_b+1), MPI_SHORT, 0, MPI_COMM_WORLD);
+}
+
+mtype lcs_yang_v2(mtype **DP, mtype *P, char *A, char *B, char *C, int m, int n, int u, int myrank, int chunk_size)
+{
+    MPI_Bcast(P, (u*(n+1)), MPI_SHORT, 0, MPI_COMM_WORLD);
+    for(int i=1;i<m+1;i++)
+    {
+        int c_i = get_idx(C, u, A[i-1]);
+	short dp_i_receive[chunk_size];
+	MPI_Scatter(DP[i], chunk_size, MPI_SHORT,&dp_i_receive,chunk_size,MPI_SHORT, 0, MPI_COMM_WORLD);
+	int start_id = (myrank * chunk_size);
+        int end_id = (myrank * chunk_size) + chunk_size;
+
+        int t,s;
+
+        for(int j=start_id;j<end_id;j++)
+        {
+ 	    if(j==start_id && myrank==0)j=j+1;
+            t= (0-P[(c_i*(n+1))+j])<0;
+            s= (0 - (DP[i-1][j] - (t*DP[i-1][P[(c_i*(n+1))+j]-1]) ));
+            dp_i_receive[j-start_id] = ((t^1)||(s^0))*(DP[i-1][j]) + (!((t^1)||(s^0)))*(DP[i-1][P[(c_i*(n+1))+j]-1] + 1);
+        }
+	//now gather all the calculated values of P matrix in process 0
+	MPI_Allgather(dp_i_receive, chunk_size, MPI_SHORT,DP[i], chunk_size, MPI_SHORT, MPI_COMM_WORLD);
+    }
+    return DP[m][n];
+}
 
 int main(int argc, char ** argv)
 {
-	
-	/*
-	if(argc <= 1)
-	{
-        printf("Error: No input file specified! Please specify the input file, and run again!\n");
-        return 0;
-    }
-	*/
-	
-    MPI_Init(&argc, &argv);
-
-	// Declare process-related vars
-    //     // and initialize MPI
-    int rank;
+		
+	int rank;
     int num_procs;
-    int chunk_size_p, chunk_size_s;//chunk_size for P matrix and DP matrix
+    int chunk_size_p, chunk_size_s;		// chunk_size para matrizes P e S		
+    mtype res_par;						// variavel do score
 
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank); 		//grab this process's rank
-    MPI_Comm_size(MPI_COMM_WORLD, &num_procs); 	//grab the total num of processes
+    MPI_Init(&argc, &argv);	
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank); 		// rank do processo
+    MPI_Comm_size(MPI_COMM_WORLD, &num_procs); 	// numero total de processos
 
+	// variaveis para medir o tempo
     double time_total, seq_time,  begin, end;	
 	begin = MPI_Wtime();	
-
-	// sequence pointers for both sequences
+	
 	char *seq_a, *seq_b, *seq_c;
-
 	seq_c = NULL;	
 
-	// sizes of both sequences
-	int size_a, size_b, size_c;
+	// tamanho das sequencias
+	int size_a, size_b, size_c;	
 
-	// score result
-    mtype res_par;
-	
-	
+	// ler sequencias a e b
+	seq_a = read_seq("A32000.in");
+	seq_b = read_seq("B32000.in");
 
-	// read both sequences
-	seq_a = read_seq("A50000.in");
-	seq_b = read_seq("B50000.in");
-
-	// find out sizes
 	size_a = strlen(seq_a);
 	size_b = strlen(seq_b);
 
-	// alphabet sequence c
+	// sequencia c
 	seq_c = get_seq_c(&size_c, seq_a, seq_b, size_a, size_b);	
 
 	chunk_size_p = (size_c / num_procs);
     chunk_size_s = ((size_b + 1) / num_procs);
 
-	
 	if(rank == 0)
 	{
-		printf("rank %d \n", rank);
 		printf("chunk_p: %d chunk_dp: %d procs: %d\n", chunk_size_p, chunk_size_s, num_procs);
 	}	
 
-    // allocate and initiate LCS score matrix 	
+    // alocar e iniciar matriz S 	
 	// printf("teste 1 \n");
 	mtype** s_matrix;
 	mtype* p_matrix;
@@ -338,19 +451,21 @@ int main(int argc, char ** argv)
             s_matrix[k][l]=0;
         }
     }
-	// printf("teste 2 aloquei s \n");
-	// allocate and initiate p_matrix in vector form
+
+	// alocar e iniciar a matriz p em forma de vetor
 	p_matrix = (mtype *)malloc((size_c * (size_b + 1)) * sizeof(mtype));
-	// printf("teste 3 aloquei p \n");
+	
 
-	// LCS parallel algorithm
-	calc_p(p_matrix, seq_b, seq_c, size_b, size_c, rank, chunk_size_p);
+	// LCS paralelo
+	calc_P_matrix_v1(p_matrix, seq_b, size_b, seq_c, size_c, rank, chunk_size_p);
+	//calc_P_matrix_v2(p_matrix, seq_b, size_b, seq_c, size_c, rank, chunk_size_p);
+	//calc_p(p_matrix, seq_b, seq_c, size_b, size_c, rank, chunk_size_p);
+	
+	res_par = lcs_yang_v1(s_matrix, p_matrix, seq_a, seq_b, seq_c, size_b, size_a, size_c, rank, chunk_size_s);
+	//res_par = lcs_yang_v2(s_matrix, p_matrix, seq_a, seq_b, seq_c, size_b, size_a, size_c, rank, chunk_size_s);
+	//res_par = lcs_mpi(size_a, size_b, size_c, s_matrix, p_matrix, seq_a, seq_b, seq_c, rank, chunk_size_s);
 
-	// printf("teste 4 calc p \n");
-
-	res_par = lcs_mpi(size_a, size_b, size_c, s_matrix, p_matrix, seq_a, seq_b, seq_c, rank, chunk_size_s);
-
-	// printf("teste 5 lcs mpi \n");
+	
     end = MPI_Wtime();
 	time_total = end - begin;	   
 	   
@@ -359,13 +474,11 @@ int main(int argc, char ** argv)
         printf("res par: %d, time par: %f \n", res_par, time_total);
     }
 
-	
-    //printf("%f   |   %f%% \n", time_total, seq*100/time_total);
-	//printf("%f   |   %f%% \n", 1-(seq*1/time_total), seq*1/time_total);
-	//printf("%f\n", time_total);
-	//printf("%f\n", seq/time_total);
-
 	free(p_matrix);
+	for(int l=0;l<size_b+1;l++)
+    {
+            free(s_matrix[l]);
+    }
 	free(s_matrix);
 
 	// Shutdown MPI 
