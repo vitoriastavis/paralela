@@ -506,8 +506,8 @@ int main(int argc, char ** argv)
 	int size_a, size_b, size_c;	
 
 	// ler sequencias a e b
-	seq_a = read_seq("A100.in");
-	seq_b = read_seq("B100.in");
+	seq_a = read_seq("A32000.in");
+	seq_b = read_seq("B32000.in");
 
 	size_a = strlen(seq_a);
 	size_b = strlen(seq_b);
