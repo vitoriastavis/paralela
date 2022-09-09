@@ -19,6 +19,8 @@
 #define max( a, b ) ( ((a) > (b)) ? (a) : (b) )
 #endif
 
+#define min( a, b ) ( ((a) < (b)) ? (a) : (b) )
+
 #define STD_TAG 0
 
 typedef unsigned short mtype;
@@ -212,23 +214,19 @@ void calc_p(mtype* p_matrix, char* seq_b, char* seq_c,  int size_b, int size_c, 
 
 	char c_recv[chunk_size];
 	// printf("teste p c recv \n");
-
-
     mtype p_recv[chunk_size*(size_b + 1)];
-
-
 	// printf("teste p p recv \n");
 	// printf("teste p 1 \n");
 	//Scatter the char array chunks by sending each process a particular chunk
-    MPI_Scatter(seq_c, chunk_size, MPI_CHAR, &c_recv, chunk_size, MPI_CHAR, 0, MPI_COMM_WORLD);
+    //MPI_Scatter(seq_c, chunk_size, MPI_CHAR, &c_recv, chunk_size, MPI_CHAR, 0, MPI_COMM_WORLD);
    	
 	// printf("teste p 2 \n");
 	//Scatter the char array chunks by sending each process a particular chunk
-    MPI_Scatter(p_matrix, chunk_size * (size_b + 1), MPI_UNSIGNED_SHORT, &p_recv, chunk_size*(size_b+1), MPI_UNSIGNED_SHORT, 0, MPI_COMM_WORLD);
+    //MPI_Scatter(p_matrix, chunk_size * (size_b + 1), MPI_UNSIGNED_SHORT, &p_recv, chunk_size*(size_b+1), MPI_UNSIGNED_SHORT, 0, MPI_COMM_WORLD);
     
 	// printf("teste p 3\n");
 	// Broadcast the whole b  array to everybody
-    MPI_Bcast(seq_b, size_b, MPI_CHAR, 0, MPI_COMM_WORLD);
+    //MPI_Bcast(seq_b, size_b, MPI_CHAR, 0, MPI_COMM_WORLD);
 
     
 	for(int i = 0; i < chunk_size; i++)
@@ -302,25 +300,70 @@ void print_line(char * seqA, char * seqB, mtype * matrix,  int sizeA,
 {
     for(int i = 0; i < sizeB; i++)
         printf("%d ", matrix[i]);
+	printf("\n");
 
 }
+
 void calc_P_matrix(short *P, char *b, int len_b, char *c, int len_c, int rank, int chunk_size)
 {
     char c_recv[chunk_size];
     short p_recv[chunk_size*(len_b+1)];
-   
-    //Scatter the char array chunks by sending each process a particular chunk
-   // MPI_Scatter(c, chunk_size, MPI_CHAR,&c_recv,chunk_size,MPI_CHAR, 0, MPI_COMM_WORLD);
 
-    //Scatter the char array chunks by sending each process a particular chunk
-    //MPI_Scatter(P, chunk_size*(len_b+1), MPI_SHORT,&p_recv,chunk_size*(len_b+1),MPI_SHORT, 0, MPI_COMM_WORLD);
-    
-    // Broadcast the whole b  array to everybody
-  //  MPI_Bcast(b, len_b, MPI_CHAR, 0, MPI_COMM_WORLD);
-  
-    for(int i = 0; i < chunk_size; i++)
+	//Scatter the char array chunks by sending each process a particular chunk
+	MPI_Scatter(c, chunk_size, MPI_CHAR,&c_recv,chunk_size,MPI_CHAR, 0, MPI_COMM_WORLD); //apaguei n deu
+	//Scatter the char array chunks by sending each process a particular chunk
+	//MPI_Scatter(P, chunk_size*(len_b+1), MPI_SHORT,&p_recv,chunk_size*(len_b+1),MPI_SHORT, 0, MPI_COMM_WORLD); //apaguei deu
+	// Broadcast the whole b  array to everybody
+   	
+	int start = rank * chunk_size;
+    int end = start + chunk_size;
+	printf("start: %d, end: %d \n", start, end);
+
+	//MPI_Bcast(b, len_b, MPI_CHAR, 0, MPI_COMM_WORLD); //apaguei deu
+
+	for(int i = start; i < end; i++)
     {
-        for(int j = 2; j < len_b + 1 ; j++)
+		printf("oi %d, teste %d\n", i, len_b);
+       /* for(int j = 2; j < len_b + 1 ; j++)
+        {     
+			//printf("tchau %d \n", j);    
+            if(b[j-2] == c_recv[i]) 
+            {
+                p_recv[(i*(len_b+1))+j] = j-1;
+            }
+            else
+            {
+                p_recv[(i*(len_b+1))+j] = p_recv[(i*(len_b+1))+j-1];
+            }*/
+
+		for(int j = 1; j < len_b + 1; j++)
+		{
+			printf("proc %d: j %d \n", rank, j); 
+			if(b[j - 1] == c_recv[i])
+			{
+				p_recv[(i*(len_b+1))+j] = j;
+			}
+			else
+			{
+				p_recv[(i*(len_b+1))+j] = p_recv[(i*(len_b+1))+j-1];
+			}
+		}
+        
+		//printf("p %d: ", rank);
+       	// print_line(c, b, P, len_c, len_b);                
+       	// printf("\n");
+		//MPI_Allgatherv(p_recv, chunk_size*(len_b+1), MPI_SHORT, P, &end-start, NULL, MPI_SHORT, MPI_COMM_WORLD);
+    	MPI_Allgather(p_recv, chunk_size*(len_b+1), MPI_SHORT, P, chunk_size*(len_b+1), MPI_SHORT, MPI_COMM_WORLD);    
+    }
+	//MPI_Gather(p_recv, chunk_size*(len_b+1), MPI_SHORT, P, chunk_size*(len_b+1), MPI_SHORT, 0, MPI_COMM_WORLD);
+
+/*
+	for(int i = 0;i < chunk_size; i++)
+    {
+		int start_id = (rank * chunk_size);
+    	int end_id = start_id + chunk_size;
+
+        for(int j = start_id + 2; j < end_id + 1 ; j++)
         {         
             if(b[j-2] == c_recv[i]) 
             {
@@ -331,19 +374,13 @@ void calc_P_matrix(short *P, char *b, int len_b, char *c, int len_c, int rank, i
                 p_recv[(i*(len_b+1))+j] = p_recv[(i*(len_b+1))+j-1];
             }
         }
-
-        printf("p %d: ", rank);
+		printf("p %d: ", rank);
         print_line(c, b, P, len_c, len_b);
-        printf("\n");
-        
+                
         printf("\n");
 
-        MPI_Allgather(p_recv, chunk_size*(len_b+1), MPI_SHORT, P, chunk_size*(len_b+1), MPI_SHORT, MPI_COMM_WORLD);
-        
-    }
-    //printMatrixv(c, b, P, len_c, len_b);
-
-    //MPI_Gather(p_recv, chunk_size*(len_b+1), MPI_SHORT, P, chunk_size*(len_b+1), MPI_SHORT, 0, MPI_COMM_WORLD);
+        MPI_Allgather(p_recv, chunk_size*(len_b+1), MPI_SHORT, P, chunk_size*(len_b+1), MPI_SHORT, MPI_COMM_WORLD);    
+    }*/
 }
 
 
@@ -355,15 +392,18 @@ mtype lcs_v1(mtype **S, mtype *P, char *A, char *B, char *C, int m, int n, int u
 		
 	    //Scatter the char array A chunks by sending each process a particular chunk
 	    //MPI_Scatter(A, chunk_size, MPI_CHAR,&scatter_receive_a,chunk_size,MPI_CHAR, 0, MPI_COMM_WORLD);
-	
+		
         int c_i = get_idx(C, u, A[i - 1]);
         
         short s_recv[chunk_size];      
 
         int start_id = (rank * chunk_size);
-        int end_id = (rank * chunk_size) + chunk_size;
+        int end_id = start_id + chunk_size;
 
-        for(int j = start_id ;j < end_id; j++)//if rank=0 then j=start_id+1 else j=start_id
+		MPI_Scatter(S[i], chunk_size, MPI_SHORT,&s_recv,chunk_size,MPI_SHORT, 0, MPI_COMM_WORLD);
+
+
+        for(int j = start_id; j < end_id; j++)//if rank=0 then j=start_id+1 else j=start_id
         {
             if(j == start_id && rank == 0) j = j + 1;
 
@@ -466,8 +506,8 @@ int main(int argc, char ** argv)
 	int size_a, size_b, size_c;	
 
 	// ler sequencias a e b
-	seq_a = read_seq("A10.in");
-	seq_b = read_seq("B10.in");
+	seq_a = read_seq("A100.in");
+	seq_b = read_seq("B100.in");
 
 	size_a = strlen(seq_a);
 	size_b = strlen(seq_b);
