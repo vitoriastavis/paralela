@@ -276,9 +276,6 @@ int main(int argc, char ** argv)
 	time_total = end - begin;	   
 	   
 	printf("res par: %d, time par: %f \n", res_par, time_total);
-    //printf("%f   |   %f%% \n", time_total, seq*100/time_total);
-	//printf("%f   |   %f%% \n", 1-(seq*1/time_total), seq*1/time_total);
-	//printf("%f\n", time_total);
-	//printf("%f\n", seq/time_total);
+    
 }
 

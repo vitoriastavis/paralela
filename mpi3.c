@@ -6,7 +6,7 @@
 	mpicc mpi_hello_world.c -o hello-world  
 	mpirun -np 5 ./hello-world
 
-	resultado eh 0
+	segfault com mais de um proc
 
 */
 
@@ -80,9 +80,7 @@ void printMatrixv(char * seqA, char * seqB, mtype * scoreMatrix,  int sizeA,
 		 int sizeB)
         {
 
-
         int i, j;
-
     
         //print header
         printf("Score Matrix:\n");
@@ -210,24 +208,18 @@ char* get_seq_c(int* size_c, char* seq_a, char* seq_b, int size_a, int size_b)
 // calculate p_matrix
 void calc_p(mtype* p_matrix, char* seq_b, char* seq_c,  int size_b, int size_c, int rank, int chunk_size)
 {	
-	// printf("teste 0asd \n"); 
-
+	
 	char c_recv[chunk_size];
-	// printf("teste p c recv \n");
     mtype p_recv[chunk_size*(size_b + 1)];
-	// printf("teste p p recv \n");
-	// printf("teste p 1 \n");
+	
 	//Scatter the char array chunks by sending each process a particular chunk
     //MPI_Scatter(seq_c, chunk_size, MPI_CHAR, &c_recv, chunk_size, MPI_CHAR, 0, MPI_COMM_WORLD);
    	
-	// printf("teste p 2 \n");
 	//Scatter the char array chunks by sending each process a particular chunk
     //MPI_Scatter(p_matrix, chunk_size * (size_b + 1), MPI_UNSIGNED_SHORT, &p_recv, chunk_size*(size_b+1), MPI_UNSIGNED_SHORT, 0, MPI_COMM_WORLD);
     
-	// printf("teste p 3\n");
 	// Broadcast the whole b  array to everybody
     //MPI_Bcast(seq_b, size_b, MPI_CHAR, 0, MPI_COMM_WORLD);
-
     
 	for(int i = 0; i < chunk_size; i++)
 	{	
@@ -243,15 +235,14 @@ void calc_p(mtype* p_matrix, char* seq_b, char* seq_c,  int size_b, int size_c, 
 			}
 		}
 	}  
-	// printf(" teste p final \n");
+
 	//now gather all the calculated values of P matrix in process 0
     MPI_Gather(p_recv, chunk_size * (size_b + 1), MPI_UNSIGNED_SHORT, p_matrix, chunk_size*(size_b+1), MPI_UNSIGNED_SHORT, 0, MPI_COMM_WORLD);
 }
 
 // calculate s_matrix according to p_matrix
 mtype lcs_mpi(int size_a, int size_b, int size_c, mtype** s_matrix, mtype* p_matrix, char* seq_a, char* seq_b, char* seq_c, int rank, int chunk_size)
-{
-	// m é do b e n é do a eu acho, e o size_c?
+{	
     MPI_Bcast(p_matrix, (size_c * (size_a + 1)), MPI_UNSIGNED_SHORT, 0, MPI_COMM_WORLD);
 	
     for (int i = 1; i < size_b + 1; i++)
@@ -259,22 +250,17 @@ mtype lcs_mpi(int size_a, int size_b, int size_c, mtype** s_matrix, mtype* p_mat
 		// a principio m é do b
 		// mas no mpi ta usando m no for e A aqui embaixo
 		int c = get_idx(seq_c, size_c, seq_a[i - 1]);
-
-		// printf("acho q eh isso \n");
+		
 		mtype s_recv[chunk_size]; 
-		// printf("acho q eh isso 2 \n");
-
-		// Broadcast the  whole B  array to everybody
-		// mas pq S[i] e isso é o S?
+		
+		// Broadcast the  whole B  array to everybody	
 		MPI_Scatter(s_matrix[i], chunk_size, MPI_UNSIGNED_SHORT, &s_recv, chunk_size, MPI_UNSIGNED_SHORT, 0, MPI_COMM_WORLD);
-		// printf("teste lcs scatter s \n");
+	
 		int start_id = (rank * chunk_size);
 		int end_id = (rank * chunk_size) + chunk_size;
-		// printf("teste lcs starta nd end \n");
-
+		
         int t = 0;
 		int s = 0;
-
 
         for (int j = start_id; j < end_id; j++)
 		{		
@@ -285,10 +271,9 @@ mtype lcs_mpi(int size_a, int size_b, int size_c, mtype** s_matrix, mtype* p_mat
             s = (0 - (s_matrix[i - 1][j] - (t * s_matrix[i-1][p_matrix[(c*(size_a+1))+j]-1])));
             s_recv[j - start_id] = ((t^1) || (s^0)) * (s_matrix[i-1][j]) + (!((t^1)||(s^0))) * (s_matrix[i-1][p_matrix[(c*(size_a+1))+j]-1]+1);
 		}	
-
-		// printf("teste lcs for \n");
+	
 		MPI_Allgather(s_recv, chunk_size, MPI_UNSIGNED_SHORT, s_matrix[i], chunk_size, MPI_UNSIGNED_SHORT, MPI_COMM_WORLD);
-		// printf("teste lcs gather \n");
+	
 	}
 
 	printf("reank %d, number %d \n", rank, s_matrix[size_b][size_a]);
@@ -304,26 +289,29 @@ void print_line(char * seqA, char * seqB, mtype * matrix,  int sizeA,
 
 }
 
-void calc_P_matrix(short *P, char *b, int len_b, char *c, int len_c, int rank, int chunk_size)
+void calc_P_matrix(mtype *P, char *b, int len_b, char *c, int len_c, int rank, int cs1, int cs2)
 {
-    char c_recv[chunk_size];
-    short p_recv[chunk_size*(len_b+1)];
+    char c_recv[cs1];
+    mtype p_recv[cs1*(len_b+1)];
 
 	//Scatter the char array chunks by sending each process a particular chunk
-	MPI_Scatter(c, chunk_size, MPI_CHAR,&c_recv,chunk_size,MPI_CHAR, 0, MPI_COMM_WORLD); //apaguei n deu
+	MPI_Scatter(c, cs1, MPI_CHAR,&c_recv,cs1,MPI_CHAR, 0, MPI_COMM_WORLD); //apaguei n deu
 	//Scatter the char array chunks by sending each process a particular chunk
 	//MPI_Scatter(P, chunk_size*(len_b+1), MPI_SHORT,&p_recv,chunk_size*(len_b+1),MPI_SHORT, 0, MPI_COMM_WORLD); //apaguei deu
+	
 	// Broadcast the whole b  array to everybody
-   	
-	int start = rank * chunk_size;
-    int end = start + chunk_size;
-	printf("start: %d, end: %d \n", start, end);
+   	// MPI_Bcast(seq_b, size_b, MPI_CHAR, 0, MPI_COMM_WORLD);
 
-	//MPI_Bcast(b, len_b, MPI_CHAR, 0, MPI_COMM_WORLD); //apaguei deu
+	int start_i = rank * cs1;
+    int end_i = start_i + cs1;
+	printf("start: %d, end: %d \n", start_i, end_i);
 
-	for(int i = start; i < end; i++)
+	for(int i = start_i; i < end_i; i++)
     {
-		printf("oi %d, teste %d\n", i, len_b);
+
+		//int start_j = rank * cs2;
+		//int end_j = start_j + cs2;  
+		
        /* for(int j = 2; j < len_b + 1 ; j++)
         {     
 			//printf("tchau %d \n", j);    
@@ -338,7 +326,7 @@ void calc_P_matrix(short *P, char *b, int len_b, char *c, int len_c, int rank, i
 
 		for(int j = 1; j < len_b + 1; j++)
 		{
-			printf("proc %d: j %d \n", rank, j); 
+			if (rank == 0) printf("proc %d: i %d, j %d \n", rank, i, j); 
 			if(b[j - 1] == c_recv[i])
 			{
 				p_recv[(i*(len_b+1))+j] = j;
@@ -352,10 +340,10 @@ void calc_P_matrix(short *P, char *b, int len_b, char *c, int len_c, int rank, i
 		//printf("p %d: ", rank);
        	// print_line(c, b, P, len_c, len_b);                
        	// printf("\n");
-		//MPI_Allgatherv(p_recv, chunk_size*(len_b+1), MPI_SHORT, P, &end-start, NULL, MPI_SHORT, MPI_COMM_WORLD);
-    	MPI_Allgather(p_recv, chunk_size*(len_b+1), MPI_SHORT, P, chunk_size*(len_b+1), MPI_SHORT, MPI_COMM_WORLD);    
+
+		MPI_Allgatherv(p_recv, cs1*(len_b+1), MPI_UNSIGNED_SHORT, P, &end_i-start_i, NULL, MPI_UNSIGNED_SHORT, MPI_COMM_WORLD);
+    	//MPI_Allgather(p_recv, cs1*(len_b+1), MPI_UNSIGNED_SHORT, P, cs1*(len_b+1), MPI_UNSIGNED_SHORT, MPI_COMM_WORLD);    
     }
-	//MPI_Gather(p_recv, chunk_size*(len_b+1), MPI_SHORT, P, chunk_size*(len_b+1), MPI_SHORT, 0, MPI_COMM_WORLD);
 
 /*
 	for(int i = 0;i < chunk_size; i++)
@@ -400,8 +388,7 @@ mtype lcs_v1(mtype **S, mtype *P, char *A, char *B, char *C, int m, int n, int u
         int start_id = (rank * chunk_size);
         int end_id = start_id + chunk_size;
 
-		MPI_Scatter(S[i], chunk_size, MPI_SHORT,&s_recv,chunk_size,MPI_SHORT, 0, MPI_COMM_WORLD);
-
+		MPI_Scatter(S[i], chunk_size, MPI_UNSIGNED_SHORT,&s_recv,chunk_size,MPI_UNSIGNED_SHORT, 0, MPI_COMM_WORLD);
 
         for(int j = start_id; j < end_id; j++)//if rank=0 then j=start_id+1 else j=start_id
         {
@@ -421,7 +408,7 @@ mtype lcs_v1(mtype **S, mtype *P, char *A, char *B, char *C, int m, int n, int u
             }
         }
         //now gather all the calculated values of P matrix in process 0
-        MPI_Allgather(s_recv, chunk_size, MPI_SHORT,S[i], chunk_size, MPI_SHORT, MPI_COMM_WORLD);
+        MPI_Allgather(s_recv, chunk_size, MPI_UNSIGNED_SHORT,S[i], chunk_size, MPI_UNSIGNED_SHORT, MPI_COMM_WORLD);
     }
 
     return S[m][n];
@@ -524,7 +511,6 @@ int main(int argc, char ** argv)
 	}	
 
     // alocar e iniciar matriz S 	
-	// printf("teste 1 \n");
 	mtype** s_matrix;
 	mtype* p_matrix;
 	s_matrix = (mtype **)malloc((size_a+1) * sizeof(mtype *));
@@ -544,9 +530,8 @@ int main(int argc, char ** argv)
 	// alocar e iniciar a matriz p em forma de vetor
 	p_matrix = (mtype *)malloc((size_c * (size_b + 1)) * sizeof(mtype));
 	
-
 	// LCS paralelo
-	calc_P_matrix(p_matrix, seq_b, size_b, seq_c, size_c, rank, chunk_size_p);
+	calc_P_matrix(p_matrix, seq_b, size_b, seq_c, size_c, rank, chunk_size_p, chunk_size_s);
 	//calc_P_matrix_v2(p_matrix, seq_b, size_b, seq_c, size_c, rank, chunk_size_p);
 	//calc_p(p_matrix, seq_b, seq_c, size_b, size_c, rank, chunk_size_p);
 	
