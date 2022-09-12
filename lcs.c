@@ -212,8 +212,8 @@ int main(int argc, char ** argv)
 	int res_seq; 
 
 	// read both sequences
-	seq_a = read_seq("A20000.in");
-	seq_b = read_seq("B20000.in");
+	seq_a = read_seq("teste.in");
+	seq_b = read_seq("teste2.in");
 
 	// find out sizes
 	size_a = strlen(seq_a);

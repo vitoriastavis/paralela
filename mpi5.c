@@ -6,8 +6,7 @@
 	mpicc mpi_hello_world.c -o hello-world  
 	mpirun -np 5 ./hello-world
 
-	mpi2
-    mas com s m n -1
+	funciona com 1 e 2 procs, 4 e 6 não
 
 */
 
@@ -73,38 +72,31 @@ char* read_seq(char *fname)
 	return seq;
 }
 
-// print matrix
-void printMatrix(char * seqseq_a, char * seqseq_b, int ** scoreMatrix,  int sizeseq_a,
-		 int sizeseq_b) {
 
-	int i, j;
-
-	//print header
-	printf("Score Matrix:\n");
-	printf("========================================\n");
-
-	//print Lseq_cS score matrix al with sequences
+void print_matrix2(mtype *P, int len_b, int len_c, char * seqA, char * seqB)
+{
+    printf("\nMatriz:");
 
 	printf("    ");
 	printf("%5c   ", ' ');
 
-	for (j = 0; j < sizeseq_b; j++)
-		printf("%5c   ", seqseq_b[j]);
+	for (int j = 0; j < len_b; j++)
+		printf("%5c   ", seqB[j]);
 
-	printf("\n");
-
-	for (i = 0; i < sizeseq_a+1; i++)
-	{
+    for (int i = 0; i < len_c; i++)
+    {
+        printf("\n");
 		if (i == 0)
 			printf("    ");
 		else
-			printf("%c   ", seqseq_a[i - 1]);
-		for (j = 0; j < sizeseq_b + 1; j++) {
-			printf("%5d   ", scoreMatrix[i][j]);
-		}
-		printf("\n");
-	}
-	printf("========================================\n");
+			printf("%5c   ", seqA[i - 1]);
+        for (int j = 0; j < len_b + 1; j++)
+        {
+            printf("%5d ", P[i * (len_b + 1) + j]);
+			
+        }
+    }
+    printf("\n");
 }
 
 // return the position of a character in a sequence, -1 if not found
@@ -262,8 +254,8 @@ int main(int argc, char ** argv)
 	int size_a, size_b, size_c;	
 
 	// ler sequencias a e b
-	seq_a = read_seq("A50000.in");
-	seq_b = read_seq("B50000.in");
+	seq_a = read_seq("teste.in");
+	seq_b = read_seq("teste2.in");
 
 	size_a = strlen(seq_a);
 	size_b = strlen(seq_b);
@@ -306,6 +298,7 @@ int main(int argc, char ** argv)
     
 	// LCS paralelo
 	calc_P(p_matrix, seq_b, size_b, seq_c, size_c, rank, chunk_size_p);
+	print_matrix2(p_matrix, size_b, size_c, seq_c, seq_b);
 	res_par = lcs_mpi(s_matrix, p_matrix, seq_a, seq_b, seq_c, size_b, size_a, size_c, rank, chunk_size_s);
 		
     end = MPI_Wtime();
