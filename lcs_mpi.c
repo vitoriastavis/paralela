@@ -3,7 +3,7 @@
 	Vitoria Stavis de seq_araujo
 	GRR20200243
 	
-	Compilar com: mpicc -O3 -lm -o mpi mpi_lcs.c  
+	Compilar com: mpicc -O3 -o mpi lcs_mpi.c -lm 
 	Rodar com: mpirun -np <n_procs> ./mpi
 
 */
@@ -53,8 +53,7 @@ char* read_seq(char *fname)
 	size = ftell(fseq);
 	rewind(fseq);
 
-	// alocar memoria para sequencia
-   
+	// alocar memoria para sequencia   
 	seq = (char *) calloc(size + 1, sizeof(char));
 	if (seq == NULL )
 	{
@@ -76,40 +75,6 @@ char* read_seq(char *fname)
 	return seq;
 }
 
-// print matrix
-void printMatrix(char * seqseq_a, char * seqseq_b, int ** scoreMatrix,  int sizeseq_a,
-		 int sizeseq_b) {
-
-	int i, j;
-
-	//print header
-	printf("Score Matrix:\n");
-	printf("========================================\n");
-
-	//print Lseq_cS score matrix al with sequences
-
-	printf("    ");
-	printf("%5c   ", ' ');
-
-	for (j = 0; j < sizeseq_b; j++)
-		printf("%5c   ", seqseq_b[j]);
-
-	printf("\n");
-
-	for (i = 0; i < sizeseq_a+1; i++)
-	{
-		if (i == 0)
-			printf("    ");
-		else
-			printf("%c   ", seqseq_a[i - 1]);
-		for (j = 0; j < sizeseq_b + 1; j++) {
-			printf("%5d   ", scoreMatrix[i][j]);
-		}
-		printf("\n");
-	}
-	printf("========================================\n");
-}
-
 // retorna index de um caractere numa string, se nao tiver, retorna -1
 int get_idx(char* str, int len, char c)
 {
@@ -126,88 +91,111 @@ int get_idx(char* str, int len, char c)
     return -1; 
 }
 
-int lcs_parallel(char* s1, char *s2, int len_s1, int len_s2, int rank, int size)
+// calcula o tamanho da maior subsequencia comum e retorna
+// parametros: string A, string B, tamanho da string A, tamanho da string B
+// rank do processo atual e numero de processadores
+int lcs_parallel(char* seq_a, char *seq_b, int len_a, int len_b, int rank, int num_procs)
 {
-    int rows = len_s1 + 1;
-    int cols = len_s2 + 1;
+	// linhas e colunas
+    int rows = len_a + 1;
+    int cols = len_b + 1;    
 
-    int row, col;
     MPI_Status status;
 
-    int dp[3][cols];
+	// matriz s com 3 linhas e cols colunas
+    int s_matrix[3][cols];
 
+	int row, col;
     for (int line = 1; line < rows+cols; line++)
 	{
+		// linhas atual, anterior e anterior da anterior
         int curr_line = line % 3;
         int prev_line = (line-1) % 3;
         int prev_prev_line = (line-2) % 3;
 
+		// coluna inicial, 0 ou linha - n de linhas
         int start_col =  max(0, line-rows); 
+
+		// minimo entre linha, n de linhas e (n de colunas - coluna inicial)
         int count = min3(line, (cols-start_col), rows); 
 
+		// start e end do tamanho do bloco do processador
         int start, end;
-        if (count <= size)
+
+        if (count <= num_procs)
 		{
             start = rank;
             end = min(rank, count-1);
         }
 		else
 		{
-            float block_len = (float)count / size;
+            float block_len = (float)count / num_procs;
             start = round(block_len*rank);
             end = round(block_len*(rank+1))-1;
         }
-  
-        for (int j=start; j<=end; j++)
+
+		// inicio do calculo, do start ate o end do bloco
+        for (int j = start; j <= end; j++)
 		{
             row = min(rows, line)-j-1;
-            col = start_col+j;
+            col = start_col + j;
 
-            if (row==0 || col==0)
+            if (row == 0 || col == 0)
 			{
-                dp[curr_line][col] = 0;
+                s_matrix[curr_line][col] = 0;
             }
-            else if (s1[row - 1] == s2[col - 1])
+            else if (seq_a[row - 1] == seq_b[col - 1])
 			{
-                int upper_left = dp[prev_prev_line][col-1];
-                dp[curr_line][col] = upper_left + 1;
+				// se os caracteres forem iguais, 
+				// valor do elemento atual = anterior + 1
+                int upper_left = s_matrix[prev_prev_line][col-1];
+                s_matrix[curr_line][col] = upper_left + 1;
             }
             else
 			{
-                int left = dp[prev_line][col-1];
-                int up = dp[prev_line][col];
-                dp[curr_line][col] = max(left, up);
+				// se nao forem iguais, adiciona um 'espaco' ou 'traco' na lcs
+				// valor do elemento atual = max entre o valor de cima e o da esquerda
+                int left = s_matrix[prev_line][col-1];
+                int up = s_matrix[prev_line][col];
+                s_matrix[curr_line][col] = max(left, up);
             }
 
+			// se for o final ou o comeco do bloco, manda o valor
             if (j == start && rank > 0)
 			{
-                MPI_Send(&dp[curr_line][col], 1, MPI_INT, rank-1, 1, MPI_COMM_WORLD);
+				// manda o primeiro elemento para o processador anterior
+                MPI_Send(&s_matrix[curr_line][col], 1, MPI_INT, rank-1, 1, MPI_COMM_WORLD);
             }
-            if (j == end && rank < size-1)
+            if (j == end && rank < num_procs-1)
 			{
-                MPI_Send(&dp[curr_line][col], 1, MPI_INT, rank+1, 1, MPI_COMM_WORLD);
+				// manda o ultimo elemento para o proximo processador
+                MPI_Send(&s_matrix[curr_line][col], 1, MPI_INT, rank+1, 1, MPI_COMM_WORLD);
             }
         }
 
+		// se for comeco do bloco, recebe o valor do processador anterior
         int prev_index = start - 1;
         if (prev_index >= 0 && prev_index < count)
 		{
             col = start_col+prev_index;
-            MPI_Recv(&dp[curr_line][col], 1, MPI_INT, rank-1, 1, MPI_COMM_WORLD, &status);
+            MPI_Recv(&s_matrix[curr_line][col], 1, MPI_INT, rank-1, 1, MPI_COMM_WORLD, &status);
         }
 
+		// se for fim do bloco, recebe o valor do proximo processador 
         int next_index = end + 1;
         if (next_index >= 0 && next_index < count)
 		{
             col = start_col+next_index;
-            MPI_Recv(&dp[curr_line][col], 1, MPI_INT, rank+1, 1, MPI_COMM_WORLD, &status);
+            MPI_Recv(&s_matrix[curr_line][col], 1, MPI_INT, rank+1, 1, MPI_COMM_WORLD, &status);
         }
     }
 
-    return dp[(rows+cols-1) % 3][cols-1];
+	// retorna o tamanho da lcs
+    return s_matrix[(rows+cols-1) % 3][cols-1];
 }
 
-void load_input(char **sa, int *sia, char **sb, int *sib, int rank)
+// carrega os inputs e transmite pelos processadores
+void load_input(char **a, int *sa, char **b, int *sb, int rank)
 {
 	char *seq_a, *seq_b;
 	int len_a, len_b;	
@@ -235,11 +223,13 @@ void load_input(char **sa, int *sia, char **sb, int *sib, int rank)
     MPI_Bcast(&seq_a[0], len_a, MPI_CHAR, 0, MPI_COMM_WORLD);
     MPI_Bcast(&seq_b[0], len_b, MPI_CHAR, 0, MPI_COMM_WORLD);
     
-    *sa = seq_a;
-    *sb = seq_b;
+	// sequencias
+    *a = seq_a;
+    *b = seq_b;
  	
-    *sia = len_a;
-    *sib = len_b;
+	// tamanhos
+    *sa = len_a;
+    *sb = len_b;
 }
 
 int main(int argc, char ** argv)
